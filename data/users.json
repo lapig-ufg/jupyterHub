@@ -3,5 +3,18 @@
     "admin": true,
     "mem_limit": "2G",
     "cpu_limit": 1
+  },
+  "tiago": {
+    "admin": true,
+    "mem_limit": "2G",
+    "cpu_limit": 1
+  },
+  "felipe": {
+    "mem_limit": "2G",
+    "cpu_limit": 1
+  }, 
+  "bernar": {
+    "mem_limit": "2G",
+    "cpu_limit": 1
   }
 }

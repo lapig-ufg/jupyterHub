@@ -1,7 +1,6 @@
 services:
   glances:
     image: nicolargo/glances:latest
-    restart: always
     environment:
       - GLANCES_OPT=-w
     volumes:
@@ -10,8 +9,10 @@ services:
     ports:
       - "9011:61208"
     networks:
-      - web_lapig
+      - web_lapig_sci2
     deploy:
+      restart_policy:
+        condition: on-failure
       resources:
         limits:
           memory: 512M
@@ -20,10 +21,7 @@ services:
 
   jupyterhub:
     image: lapig/geojupyterhub:v1
-    container_name: jupyterhub
     hostname: jupyterhub
-    ports:
-      - "8000:443"
     volumes:
       - ../var/db:/srv/jupyterhub
       - ../scripts:/srv/jupyterhub/scripts
@@ -31,28 +29,30 @@ services:
       - ../data/users.json:/srv/jupyterhub/users.json:ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-   # environment:
-      # - DOCKER_NETWORK_NAME=web_lapig
-      # - OAUTH_CLIENT_ID=jupyterhub
-      # - OAUTH_CLIENT_SECRET=dkJGtLyC6kvDWlNbEUnlG4wIsn2zTXTH
     networks:
-      - web_lapig
-    restart: always
+      - web_lapig_sci2
     command: >
       jupyterhub -f /srv/jupyterhub/scripts/jupyterhub_config.py
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.jupyterhub.service=jupyterhub"
-      - "traefik.docker.network=web_lapig"
-      - "traefik.http.services.jupyterhub.loadbalancer.server.port=443"
-      - "traefik.http.services.jupyterhub.loadbalancer.server.scheme=http"
-      - "traefik.http.routers.jupyterhub.rule=Host(`sci.lapig.iesa.ufg.br`)"
-      - "traefik.http.routers.jupyterhub.tls.certresolver=le"
-      - "traefik.http.routers.jupyterhub.entrypoints=websecure"
     env_file:
       - ../.env
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.jupyterhub2.service=jupyterhub2"
+        - "traefik.docker.network=web_lapig"
+        - "traefik.http.services.jupyterhub2.loadbalancer.server.port=443"
+        - "traefik.http.services.jupyterhub2.loadbalancer.server.scheme=http"
+        - "traefik.http.routers.jupyterhub2.rule=Host(`sci2.lapig.iesa.ufg.br`)"
+        - "traefik.http.routers.jupyterhub2.tls.certresolver=le"
+        - "traefik.http.routers.jupyterhub2.entrypoints=websecure"
 
 networks:
-  web_lapig:
+  web_lapig_sci2:
     external: true
-    name: web_lapig
+    name: web_lapig_sci2
