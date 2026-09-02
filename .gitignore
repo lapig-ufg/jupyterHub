@@ -1,4 +1,4 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 build/
@@ -9,17 +9,16 @@ wheels/
 # Virtual environments
 .venv
 
-# Secrets and environment
+# Secrets e ambiente
 .env
 jupyterhub_cookie_secret
 
-# JupyterHub runtime & state files
+# JupyterHub runtime e estado
 *.sqlite
 *.pid
 var/db/users.json
 var/db/scripts/
+var/run/
 
-# Testes locais/experimentais
-local_tests/
-
-
+# Logs
+logs/
