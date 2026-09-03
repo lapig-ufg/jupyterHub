@@ -4,8 +4,8 @@ from oauthenticator.generic import GenericOAuthenticator
 
 # --- CONFIGURAÇÃO PADRÃO DO CONTAINER DE USUÁRIO ---
 docker_default = {
-    "image": os.environ.get('DOCKER_NOTEBOOK_IMAGE', 'lapig/jupterlab:v3.0.7'),
-    "mem_limit": os.environ.get('DOCKER_MEM_LIMIT', '4G'),
+    "image": os.environ.get('lapig/jupterlab:v3.0.7'),
+    "mem_limit": os.environ.get('4G'),
     "cpu_limit": int(os.environ.get('DOCKER_CPU_LIMIT', 1)),
     "network_name": os.environ.get('DOCKER_NETWORK_NAME', 'web_lapig_sci2'),
     "volumes": {
@@ -54,7 +54,7 @@ async def user_docker_config(spawner):
     username = spawner.user.name
 
     spawner.notebook_dir = "/work"
-    spawner.image = docker_default['image']
+    spawner.image = user_info.get('image_container', docker_default['image'])
     spawner.network_name = docker_default['network_name']
     spawner.mem_limit = user_info.get('mem_limit', docker_default['mem_limit'])
 
