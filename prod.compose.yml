@@ -39,7 +39,7 @@ services:
         condition: on-failure
 
   jupyterhub:
-    image: lapig/geojupyterhub:v1
+    image: lapig/jupyterhub-sci2:prod_latest
     hostname: jupyterhub
     volumes:
       - /home/lapig/applications/services/jupyterHub/var/db:/srv/jupyterhub
