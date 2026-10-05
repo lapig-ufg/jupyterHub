@@ -1,0 +1,95 @@
+name: Build and Deploy (srv3)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:   # permite rodar manualmente pela aba Actions
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # BUILD: roda nas máquinas do GitHub. Compila a aplicação, gera a imagem
+  # Docker e envia ao Docker Hub com as tags prod_<commit> e prod_latest.
+  # ---------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      APPLICATION_NAME: ${{ steps.create_env.outputs.APPLICATION_NAME }}
+      DOCKER_PATH: ${{ steps.create_env.outputs.DOCKER_PATH }}
+      LAST_COMMIT_HASH: ${{ steps.create_env.outputs.LAST_COMMIT_HASH }}
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v7
+
+      - name: Definir variáveis
+        id: create_env
+        run: |
+          set_var() {
+            echo "$1=$2" >> "$GITHUB_ENV"
+            echo "$1=$2" >> "$GITHUB_OUTPUT"
+          }
+          set_var "DOCKER_PATH" "prod"
+          set_var "APPLICATION_NAME" "${{ github.event.repository.name }}"
+          set_var "LAST_COMMIT_HASH" "$(git log --pretty=format:%h -n 1)"
+
+      - name: Criar version.json
+        run: |
+          echo "{\"commitId\":\"$LAST_COMMIT_HASH\",\"repository\":\"$APPLICATION_NAME\",\"dockerPath\":\"$DOCKER_PATH\"}" > version.json
+          cat version.json
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.8.0'
+
+      - name: Build do server e do client
+        run: |
+          npm set progress=false
+          cd "$GITHUB_WORKSPACE/server" && npm install
+          cd "$GITHUB_WORKSPACE/client" && npm install
+          npm install -g @angular/cli@16.2.14
+          cd "$GITHUB_WORKSPACE/client" && ng build --stats-json --source-map=false --no-progress
+
+      - name: Build da imagem Docker
+        run: |
+          docker build \
+            --build-arg GIT_COMMIT="$LAST_COMMIT_HASH" \
+            --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -t "lapig/$APPLICATION_NAME:${DOCKER_PATH}_${LAST_COMMIT_HASH}" \
+            -t "lapig/$APPLICATION_NAME:${DOCKER_PATH}_latest" \
+            -f "docker/$DOCKER_PATH/Dockerfile" . --no-cache
+
+      - name: Login no Docker Hub
+        env:
+          DOCKERHUB_PASS: ${{ secrets.DOCKERHUB_PASS }}
+        run: echo "$DOCKERHUB_PASS" | docker login -u lapig --password-stdin
+
+      - name: Enviar imagem ao registry
+        run: |
+          docker push "lapig/$APPLICATION_NAME:${DOCKER_PATH}_${LAST_COMMIT_HASH}"
+          docker push "lapig/$APPLICATION_NAME:${DOCKER_PATH}_latest"
+
+  # ---------------------------------------------------------------------------
+  # DEPLOY: roda no runner do srv3. O caretaker baixa a imagem nova e
+  # atualiza a stack prod_<nome-do-repo> no Swarm.
+  # ---------------------------------------------------------------------------
+  deploy:
+    needs: build
+    runs-on: [self-hosted, srv3-github-runner]
+    env:
+      APPLICATION_NAME: ${{ needs.build.outputs.APPLICATION_NAME }}
+      DOCKER_PATH: ${{ needs.build.outputs.DOCKER_PATH }}
+      LAST_COMMIT_HASH: ${{ needs.build.outputs.LAST_COMMIT_HASH }}
+
+    steps:
+      - name: Deploy com o caretaker
+        run: caretaker "$APPLICATION_NAME" "$DOCKER_PATH"
+
+      - name: Status da stack
+        run: |
+          echo "Versão: lapig/$APPLICATION_NAME:${DOCKER_PATH}_${LAST_COMMIT_HASH}"
+          docker stack services "${DOCKER_PATH}_${APPLICATION_NAME}"
