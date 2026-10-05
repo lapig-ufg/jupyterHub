@@ -23,7 +23,7 @@ services:
     image: lapig/jupyterhub-monitor:v1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # acesso somente-leitura ao socket
-      - /home/lapig/applications/service/jupyterHub/logs:/logs  # onde os logs serão salvos
+      - /home/lapig/applications/services/jupyterHub/logs:/logs  # onde os logs serão salvos
     environment:
       - MONITOR_INTERVAL=60        # intervalo de coleta em segundos
       - MEM_WARN_PERCENT=90        # % de RAM para gerar WARNING
@@ -42,10 +42,10 @@ services:
     image: lapig/geojupyterhub:v1
     hostname: jupyterhub
     volumes:
-      - ../var/db:/srv/jupyterhub
-      - ../scripts:/srv/jupyterhub/scripts
+      - /home/lapig/applications/services/jupyterHub/var/db:/srv/jupyterhub
+      - /home/lapig/applications/services/jupyterHub/scripts:/srv/jupyterhub/scripts
       - /var/run/docker.sock:/var/run/docker.sock
-      - ../data/users.json:/srv/jupyterhub/users.json:ro
+      - /home/lapig/applications/services/jupyterHub/data/users.json:/srv/jupyterhub/users.json:ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     networks:
@@ -53,7 +53,7 @@ services:
     command: >
       jupyterhub -f /srv/jupyterhub/scripts/jupyterhub_config.py
     env_file:
-      - ../.env
+      - ./.env
     deploy:
       replicas: 1
       placement:

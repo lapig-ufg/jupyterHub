@@ -1,4 +1,4 @@
-name: Build and Deploy (srv3)
+name: Deploy JupyterHub (srv3)
 
 on:
   push:
@@ -9,87 +9,34 @@ on:
 permissions:
   contents: read
 
+# Se houver dois pushes seguidos, o segundo deploy espera o primeiro terminar.
+concurrency:
+  group: deploy-jupyterhub
+  cancel-in-progress: false
+
 jobs:
   # ---------------------------------------------------------------------------
-  # BUILD: roda nas máquinas do GitHub. Compila a aplicação, gera a imagem
-  # Docker e envia ao Docker Hub com as tags prod_<commit> e prod_latest.
-  # ---------------------------------------------------------------------------
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      APPLICATION_NAME: ${{ steps.create_env.outputs.APPLICATION_NAME }}
-      DOCKER_PATH: ${{ steps.create_env.outputs.DOCKER_PATH }}
-      LAST_COMMIT_HASH: ${{ steps.create_env.outputs.LAST_COMMIT_HASH }}
-
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v7
-
-      - name: Definir variáveis
-        id: create_env
-        run: |
-          set_var() {
-            echo "$1=$2" >> "$GITHUB_ENV"
-            echo "$1=$2" >> "$GITHUB_OUTPUT"
-          }
-          set_var "DOCKER_PATH" "prod"
-          set_var "APPLICATION_NAME" "${{ github.event.repository.name }}"
-          set_var "LAST_COMMIT_HASH" "$(git log --pretty=format:%h -n 1)"
-
-      - name: Criar version.json
-        run: |
-          echo "{\"commitId\":\"$LAST_COMMIT_HASH\",\"repository\":\"$APPLICATION_NAME\",\"dockerPath\":\"$DOCKER_PATH\"}" > version.json
-          cat version.json
-
-      - name: Configurar Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22.8.0'
-
-      - name: Build do server e do client
-        run: |
-          npm set progress=false
-          cd "$GITHUB_WORKSPACE/server" && npm install
-          cd "$GITHUB_WORKSPACE/client" && npm install
-          npm install -g @angular/cli@16.2.14
-          cd "$GITHUB_WORKSPACE/client" && ng build --stats-json --source-map=false --no-progress
-
-      - name: Build da imagem Docker
-        run: |
-          docker build \
-            --build-arg GIT_COMMIT="$LAST_COMMIT_HASH" \
-            --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -t "lapig/$APPLICATION_NAME:${DOCKER_PATH}_${LAST_COMMIT_HASH}" \
-            -t "lapig/$APPLICATION_NAME:${DOCKER_PATH}_latest" \
-            -f "docker/$DOCKER_PATH/Dockerfile" . --no-cache
-
-      - name: Login no Docker Hub
-        env:
-          DOCKERHUB_PASS: ${{ secrets.DOCKERHUB_PASS }}
-        run: echo "$DOCKERHUB_PASS" | docker login -u lapig --password-stdin
-
-      - name: Enviar imagem ao registry
-        run: |
-          docker push "lapig/$APPLICATION_NAME:${DOCKER_PATH}_${LAST_COMMIT_HASH}"
-          docker push "lapig/$APPLICATION_NAME:${DOCKER_PATH}_latest"
-
-  # ---------------------------------------------------------------------------
-  # DEPLOY: roda no runner do srv3. O caretaker baixa a imagem nova e
-  # atualiza a stack prod_<nome-do-repo> no Swarm.
+  # DEPLOY: roda no runner do srv3.
+  #
+  # Este repositório não builda imagem a cada push: as imagens do Hub e do
+  # monitor são versionadas à mão (ver README). O que muda no dia a dia são
+  # os arquivos (compose, jupyterhub_config.py), então o deploy:
+  #   1. atualiza o clone do repositório no servidor (/services/jupyterHub);
+  #   2. aplica a stack prod_jupyterHub com o caretaker;
+  #   3. reinicia o Hub, para ele reler o jupyterhub_config.py.
   # ---------------------------------------------------------------------------
   deploy:
-    needs: build
     runs-on: [self-hosted, srv3-github-runner]
     env:
-      APPLICATION_NAME: ${{ needs.build.outputs.APPLICATION_NAME }}
-      DOCKER_PATH: ${{ needs.build.outputs.DOCKER_PATH }}
-      LAST_COMMIT_HASH: ${{ needs.build.outputs.LAST_COMMIT_HASH }}
+      APP_NAME: ${{ github.event.repository.name }}   # jupyterHub
+      APP_TYPE: prod
 
     steps:
-      - name: Deploy com o caretaker
-        run: caretaker "$APPLICATION_NAME" "$DOCKER_PATH"
+      - name: Atualizar os arquivos no servidor
+        run: git -c safe.directory="/services/$APP_NAME" -C "/services/$APP_NAME" pull --ff-only
 
-      - name: Status da stack
-        run: |
-          echo "Versão: lapig/$APPLICATION_NAME:${DOCKER_PATH}_${LAST_COMMIT_HASH}"
-          docker stack services "${DOCKER_PATH}_${APPLICATION_NAME}"
+      - name: Deploy da stack com o caretaker
+        run: caretaker "$APP_NAME" "$APP_TYPE"
+
+      - name: Reiniciar o Hub (recarrega o jupyterhub_config.py)
+        run: docker service update --force --detach=false "${APP_TYPE}_${APP_NAME}_jupyterhub"
