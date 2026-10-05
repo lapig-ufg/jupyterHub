@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:   # rodar à mão (Run workflow) sempre gera a imagem do Hub
+  workflow_dispatch:   # rodar à mão (Run workflow) sempre gera as imagens
 
 permissions:
   contents: read
@@ -14,23 +14,34 @@ concurrency:
   group: deploy-jupyterhub
   cancel-in-progress: false
 
-env:
-  HUB_IMAGE: lapig/jupyterhub-sci2
-
 jobs:
   # ---------------------------------------------------------------------------
-  # BUILD: roda nas máquinas do GitHub. Gera a imagem do Hub a partir de
-  # docker/Dockerfile.hub e envia ao Docker Hub como prod_<commit> e prod_latest.
+  # BUILD: roda nas máquinas do GitHub, uma vez para cada imagem da lista.
+  # Cada imagem é enviada ao Docker Hub como prod_<commit> e prod_latest.
   #
-  # A imagem só é gerada quando:
-  #   - o docker/Dockerfile.hub mudou neste push; ou
+  # Uma imagem só é gerada quando:
+  #   - algum arquivo da pasta dela mudou neste push; ou
   #   - o workflow foi disparado à mão (Run workflow); ou
-  #   - a tag prod_latest ainda não existe no Docker Hub.
-  # Nos demais pushes (mudança só em config ou compose), esta fase termina
-  # rápido e o deploy usa a imagem que já está publicada.
+  #   - a tag prod_latest dela ainda não existe no Docker Hub.
   # ---------------------------------------------------------------------------
   build:
+    name: build (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: hub
+            image: lapig/jupyterhub-sci2
+            context: docker
+            dockerfile: docker/Dockerfile.hub
+          - name: monitor
+            image: lapig/jupyterhub-sci2-monitor
+            context: health-check
+            dockerfile: health-check/Dockerfile
+    env:
+      IMAGE: ${{ matrix.image }}
+      CONTEXT: ${{ matrix.context }}
+      DOCKERFILE: ${{ matrix.dockerfile }}
 
     steps:
       - name: Checkout do código
@@ -52,37 +63,37 @@ jobs:
           if [ "$EVENT" = "workflow_dispatch" ]; then
             echo "Disparo manual: a imagem será gerada."
             echo "build=true" >> "$GITHUB_OUTPUT"
-          elif ! docker manifest inspect "$HUB_IMAGE:prod_latest" > /dev/null 2>&1; then
-            echo "$HUB_IMAGE:prod_latest ainda não existe: a imagem será gerada."
+          elif ! docker manifest inspect "$IMAGE:prod_latest" > /dev/null 2>&1; then
+            echo "$IMAGE:prod_latest ainda não existe: a imagem será gerada."
             echo "build=true" >> "$GITHUB_OUTPUT"
-          elif ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- docker/Dockerfile.hub 2>/dev/null; then
-            echo "docker/Dockerfile.hub mudou: a imagem será gerada."
+          elif ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- "$CONTEXT" 2>/dev/null; then
+            echo "A pasta $CONTEXT mudou: a imagem será gerada."
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Dockerfile.hub não mudou: o deploy vai usar a imagem já publicada."
+            echo "Nada mudou em $CONTEXT: o deploy vai usar a imagem já publicada."
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build da imagem do Hub
+      - name: Build da imagem
         if: steps.check.outputs.build == 'true'
         run: |
           docker build \
-            -f docker/Dockerfile.hub \
-            -t "$HUB_IMAGE:prod_${GITHUB_SHA::7}" \
-            -t "$HUB_IMAGE:prod_latest" \
-            docker/
+            -f "$DOCKERFILE" \
+            -t "$IMAGE:prod_${GITHUB_SHA::7}" \
+            -t "$IMAGE:prod_latest" \
+            "$CONTEXT"
 
       - name: Enviar a imagem ao Docker Hub
         if: steps.check.outputs.build == 'true'
         run: |
-          docker push "$HUB_IMAGE:prod_${GITHUB_SHA::7}"
-          docker push "$HUB_IMAGE:prod_latest"
+          docker push "$IMAGE:prod_${GITHUB_SHA::7}"
+          docker push "$IMAGE:prod_latest"
 
   # ---------------------------------------------------------------------------
-  # DEPLOY: roda no runner do srv3.
+  # DEPLOY: roda no runner do srv3, depois que todas as imagens estiverem prontas.
   #   1. atualiza o clone do repositório no servidor (/services/jupyterHub);
-  #   2. aplica a stack prod_jupyterHub com o caretaker (que baixa a imagem
-  #      prod_latest mais recente);
+  #   2. aplica a stack prod_jupyterHub com o caretaker (que baixa as
+  #      imagens prod_latest mais recentes);
   #   3. reinicia o Hub, para ele reler o jupyterhub_config.py.
   # ---------------------------------------------------------------------------
   deploy:

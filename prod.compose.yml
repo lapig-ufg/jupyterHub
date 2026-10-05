@@ -20,7 +20,7 @@ services:
           memory: 100M
 
   monitor:
-    image: lapig/jupyterhub-monitor:v1
+    image: lapig/jupyterhub-sci2-monitor:prod_latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # acesso somente-leitura ao socket
       - /home/lapig/applications/services/jupyterHub/logs:/logs  # onde os logs serão salvos
