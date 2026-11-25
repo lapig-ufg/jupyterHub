@@ -4,7 +4,7 @@ from oauthenticator.generic import GenericOAuthenticator
 
 # --- CONFIGURAÇÃO PADRÃO DO CONTAINER DE USUÁRIO ---
 docker_default = {
-    "image": os.environ.get('lapig/jupterlab:v3.0.8'),
+    "image": os.environ.get('DOCKER_NOTEBOOK_IMAGE'),
     "mem_limit": os.environ.get('4G'),
     "cpu_limit": int(os.environ.get('DOCKER_CPU_LIMIT', 1)),
     "network_name": os.environ.get('DOCKER_NETWORK_NAME', 'web_lapig_sci2'),
