@@ -75,12 +75,14 @@ USER root
 RUN mamba install -c conda-forge --yes \
     sqlite parallel\
     udunits2 r-sf r-geojsonio r-lidr r-magick imagemagick r-units \
+    r-arrow r-sits r-kohonen \
     r-terra r-summarytools r-rlas r-rcppeigen r-stars r-rnaturalearth r-foreign \
     r-workflowr r-coin r-rmarkdown r-mgcv r-mongolite r-viridislite r-tidyverse \
     r-ranger r-tuneranger r-mlr r-cowplot r-car r-fitdistrplus r-pacman \
     r-readxl r-readr r-leaflet r-rnaturalearthdata r-languageserver \
     r-corrplot r-mice r-missForest r-gridExtra r-hrbrthemes r-gt r-brms && \
-    mamba clean --all -f -y
+    mamba clean --all -f -y && \
+    fix-permissions "${CONDA_DIR}"
 
 RUN R CMD javareconf
 

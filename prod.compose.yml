@@ -9,7 +9,7 @@ services:
     ports:
       - "9011:61208"
     networks:
-      - web_lapig_sci2
+      - jupyterhub-network
     deploy:
       restart_policy:
         condition: on-failure
@@ -29,7 +29,7 @@ services:
       - MEM_WARN_PERCENT=90        # % de RAM para gerar WARNING
       - LOGS_BASE=/logs
     networks:
-      - web_lapig_sci2
+      - jupyterhub-network
     deploy:
       replicas: 1
       placement:
@@ -49,7 +49,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     networks:
-      - web_lapig_sci2
+      - jupyterhub-network
     command: >
       jupyterhub -f /srv/jupyterhub/scripts/jupyterhub_config.py
     env_file:
@@ -61,17 +61,23 @@ services:
           - node.role == manager
       restart_policy:
         condition: on-failure
+
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.jupyterhub2.service=jupyterhub2"
-        - "traefik.docker.network=web_lapig"
+        - "traefik.docker.network=jupyterhub-network"
         - "traefik.http.services.jupyterhub2.loadbalancer.server.port=443"
         - "traefik.http.services.jupyterhub2.loadbalancer.server.scheme=http"
         - "traefik.http.routers.jupyterhub2.rule=Host(`sci2.lapig.iesa.ufg.br`)"
         - "traefik.http.routers.jupyterhub2.tls.certresolver=le"
         - "traefik.http.routers.jupyterhub2.entrypoints=websecure"
+        # /hub/login -> /hub/oauth_login (vai direto para o Keycloak, mantém o ?next=...)
+        - 'traefik.http.middlewares.jhub-autologin.redirectregex.regex=^https://sci2\.lapig\.iesa\.ufg\.br/hub/login(\?.*)?$$'
+        - 'traefik.http.middlewares.jhub-autologin.redirectregex.replacement=https://sci2.lapig.iesa.ufg.br/hub/oauth_login$${1}'
+        - "traefik.http.middlewares.jhub-autologin.redirectregex.permanent=false"
+        - "traefik.http.routers.jupyterhub2.middlewares=jhub-autologin"
 
 networks:
-  web_lapig_sci2:
+  jupyterhub-network:
     external: true
-    name: web_lapig_sci2
+    name: jupyterhub-network
